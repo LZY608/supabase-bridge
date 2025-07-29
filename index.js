@@ -41,6 +41,7 @@ async function forwardThingSpeakData() {
       timestamp: latestFeed.created_at
     };
 
+    console.log("📦 Payload to Supabase:", payload);
     const supaRes = await axios.post(`${SUPABASE_URL}/rest/v1/${TABLE_NAME}`, [payload], {
       headers: {
         "apikey": SUPABASE_KEY,
@@ -54,8 +55,13 @@ async function forwardThingSpeakData() {
     console.log("✅ Data forwarded to Supabase at", new Date().toLocaleString());
 
   } catch (err) {
+  if (err.response) {
+    console.error("❌ Supabase Error:", err.response.data);
+    console.error("❌ Status Code:", err.response.status);
+  } else {
     console.error("❌ Error:", err.message);
   }
+}
 }
 
 // 🕒 Run every 5 minutes
