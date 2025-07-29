@@ -1,42 +1,68 @@
-const express = require("express");
-const fetch = require("node-fetch");
-const app = express();
-const PORT = process.env.PORT || 10000;
+const axios = require("axios");
+const cron = require("node-cron");
 
-app.use(express.json());
+require("dotenv").config();
 
-const SUPABASE_URL = "https://zdnlebbdntgwfdmqelkc.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkbmxlYmJkbnRnd2ZkbXFlbGtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE1OTAwNzAsImV4cCI6MjA2NzE2NjA3MH0.tY9pKR3ffgvN4KGOTF0Rl5ivUsg1mVMFcV8TR2W3W94";  // ⬅️ Replace with your real Supabase API key
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const TABLE_NAME = "sensor_data"; 
 
-app.post("/upload", async (req, res) => {
+async function forwardThingSpeakData() {
   try {
-    const payload = req.body;
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/sensor_data`, {
-      method: "POST",
+    // Fetch latest 1 entry from ThingSpeak
+    const response = await axios.get(
+      "https://api.thingspeak.com/channels/2947640/feeds.json?api_key=H15AO4ZITEOZMUEJ&results=1"
+    );
+
+    const latestFeed = response.data.feeds[0]; // 🟢 Only the latest feed
+    if (!latestFeed) {
+      console.log("No data received from ThingSpeak.");
+      return;
+    }
+
+    // Example: Map ThingSpeak fields to Supabase format
+    const payload = {
+      air_temperature: parseFloat(latestFeed.field1),
+      air_humidity: parseFloat(latestFeed.field2),
+      soil_tds: parseFloat(latestFeed.field3),
+      light_intensity: parseFloat(latestFeed.field4),
+      soil_moisture: parseFloat(latestFeed.field5),
+      soil_temperature: parseFloat(latestFeed.field6),
+      soil_conductivity: parseFloat(latestFeed.field7),
+      soil_ph: parseFloat(latestFeed.field8),
+      timestamp: latestFeed.created_at
+    };
+
+    // Send to Supabase
+    const supaRes = await axios.post(`${SUPABASE_URL}/rest/v1/${TABLE_NAME}`, [payload], {
       headers: {
         "apikey": SUPABASE_KEY,
         "Authorization": `Bearer ${SUPABASE_KEY}`,
         "Content-Type": "application/json",
         "Prefer": "return=minimal"
-      },
-      body: JSON.stringify(payload)
+      }
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      return res.status(response.status).send(text);
-    }
-
-    res.send("Success");
+    console.log("✅ Data forwarded to Supabase at", new Date().toLocaleString());
   } catch (err) {
-    console.error("Error:", err);
-    res.status(500).send("Internal Server Error");
+    console.error("❌ Error:", err.message);
   }
+}
+
+// Run every 15 minutes
+cron.schedule("*/15 * * * *", () => {
+  forwardThingSpeakData();
 });
 
-app.get('/', (req, res) => {
-  res.send('Supabase bridge is running!');
+// Optional: basic status route (if you open the app URL)
+const express = require("express");
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.get("/", (_, res) => {
+  res.send("ThingSpeak → Supabase bridge is running!");
 });
+
 app.listen(PORT, () => {
-  console.log(`Bridge running on http://localhost:${PORT}`);
+  console.log(`🌐 Server running on port ${PORT}`);
 });
